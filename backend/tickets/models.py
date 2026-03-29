@@ -104,7 +104,7 @@ class Attachment(models.Model):
         related_name="attachments"
     )
     file=models.FileField(upload_to="attachments/")
-    file_size=models.IntegerField()
+    file_size=models.IntegerField(null=True,blank=True)
     uploaded_at=models.DateTimeField(auto_now_add=True)
 
 class TicketEvent(models.Model):
