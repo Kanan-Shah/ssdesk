@@ -9,6 +9,8 @@ from django.contrib.auth.models import User
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from django.db.models import Count,Avg,F,ExpressionWrapper,DurationField
+from datetime import timedelta
 
 class TicketCreateView(generics.CreateAPIView):
     queryset=Ticket.objects.all()
@@ -204,3 +206,48 @@ class AddCommentView(APIView):
         )
 
         return Response({"message":"comment added"})
+
+class DashboardView(APIView):
+    def get(self,request):
+        now=timezone.now()
+
+        #Total Tickets
+        total_tickets=Ticket.objects.count()
+
+        #open tickets
+        open_tickets=Ticket.objects.filter(status="OPEN").count()
+
+        #overdue tickets
+        overdue_tickets=Ticket.objects.filter(
+            sla_deadline__lt=now
+        ).count()
+
+        # Average resolution time - last 7 days
+        last_7_days=now-timedelta(days=7)
+
+        resolved_tickets=Ticket.objects.filter(
+            status="RESOLVED",
+            updated_at__gte=last_7_days
+        ).annotate(
+            resolution_time=ExpressionWrapper(
+                F("updated_at")-F("created_at"),
+                output_field=DurationField()
+            )
+        )
+
+        avg_resolution_time=resolved_tickets.aggregate(
+            avg_time=Avg("resolution_time")
+        )["avg_time"]
+
+        # category wise count
+        category_data=Ticket.objects.values("category").annotate(
+            count=Count("id")
+        )
+
+        return Response({
+            "total_tickets":total_tickets,
+            "open_tickets":open_tickets,
+            "overdue_tickets":overdue_tickets,
+            "avg_resolution_time":avg_resolution_time,
+            "category_distribution":category_data,
+        })
