@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import TicketCreateView, TicketListView,TicketDetailView,UpdateTicketStatusView,ReopenTicketView,AddCommentView,DashboardView
+from .views import TicketCreateView, TicketListView,TicketDetailView,UpdateTicketStatusView,ReopenTicketView,AddCommentView,DashboardView,UploadAttachmentView,OverridePriorityView
 
 urlpatterns=[
     path("create/",TicketCreateView.as_view(),name="ticket-create"),
@@ -9,4 +9,6 @@ urlpatterns=[
     path("<int:pk>/reopen/",ReopenTicketView.as_view(),name="reopen-ticket"),
     path("<int:pk>/comment/",AddCommentView.as_view(),name="add-comment"),
     path("dashboard/",DashboardView.as_view(),name="dashboard"),
+    path("<int:pk>/upload/",UploadAttachmentView.as_view(),name="upload-file"),
+    path("<int:pk>/override-priority/",OverridePriorityView.as_view(),)
 ]

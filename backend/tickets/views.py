@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from rest_framework import generics
 from django.utils import timezone
-from .models import Ticket,TicketEvent,Comment
+from .models import Ticket,TicketEvent,Comment,Attachment
 from .serializers import TicketSerializer
 from .services.priority_engine import compute_priority
 from .services.sla_engine import compute_sla_deadline
@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import Count,Avg,F,ExpressionWrapper,DurationField
 from datetime import timedelta
+from rest_framework.parsers import MultiPartParser,FormParser
 
 class TicketCreateView(generics.CreateAPIView):
     queryset=Ticket.objects.all()
@@ -108,8 +109,15 @@ class TicketListView(generics.ListAPIView):
         return queryset
 
 class TicketDetailView(generics.RetrieveAPIView):
-    queryset=Ticket.objects.all()
+
     serializer_class=TicketSerializer
+    def get_queryset(self):
+        user=self.request.user
+        queryset=Ticket.objects.all()
+
+        if not user.is_staff:
+            queryset=queryset.filter(created_by=user)
+        return queryset
 
 VALID_TRANSITIONS={
     "OPEN":["IN_PROGRESS"],
@@ -204,6 +212,11 @@ class AddCommentView(APIView):
             event_type="COMMENT_ADDED",
             metadata={"type":comment_type}
         )
+        if comment_type=="INTERNAL" and not user.is_staff:
+            return Response(
+                {"error":"Only admins can add internal comments"},
+                status=403
+            )
 
         return Response({"message":"comment added"})
 
@@ -251,3 +264,64 @@ class DashboardView(APIView):
             "avg_resolution_time":avg_resolution_time,
             "category_distribution":category_data,
         })
+    
+class UploadAttachmentView(APIView):
+    parser_classes = (MultiPartParser, FormParser)
+    def post(self, request, pk):
+
+        try:
+            ticket = Ticket.objects.get(pk=pk)
+        except Ticket.DoesNotExist:
+            return Response({"error": "Ticket not found"}, status=404)
+
+        file = request.FILES.get("file")
+
+        if not file:
+            return Response({"error": "No file provided"}, status=400)
+
+        attachment=Attachment.objects.create(
+
+            ticket=ticket,
+            file=file,
+            file_size=file.size
+        )
+
+        # Event log
+        TicketEvent.objects.create(
+            ticket=ticket,
+            event_type="ATTACHMENT_ADDED"
+            )
+
+        return Response({"message": "File uploaded"})
+
+class OverridePriorityView(APIView):
+
+    def post(self, request, pk):
+        user = request.user
+
+        if not user.is_staff:
+            return Response({"error": "Admin only"}, status=403)
+
+        try:
+            ticket = Ticket.objects.get(pk=pk)
+        except Ticket.DoesNotExist:
+            return Response({"error": "Ticket not found"}, status=404)
+
+        new_priority = request.data.get("priority")
+
+        if new_priority not in ["P0", "P1", "P2", "P3"]:
+            return Response({"error": "Invalid priority"}, status=400)
+
+        old_priority = ticket.priority
+        ticket.priority = new_priority
+        ticket.save()
+
+        # Event log
+        TicketEvent.objects.create(
+            ticket=ticket,
+            event_type="PRIORITY_OVERRIDDEN",
+            metadata={"from": old_priority, "to": new_priority}
+        )
+
+        return Response({"message": "Priority updated"})  
+
