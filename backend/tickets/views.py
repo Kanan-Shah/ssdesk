@@ -1,12 +1,14 @@
 from django.shortcuts import render
 from rest_framework import generics
-
 from django.utils import timezone
-from .models import Ticket,TicketEvent
+from .models import Ticket,TicketEvent,Comment
 from .serializers import TicketSerializer
 from .services.priority_engine import compute_priority
 from .services.sla_engine import compute_sla_deadline
 from django.contrib.auth.models import User
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
 
 class TicketCreateView(generics.CreateAPIView):
     queryset=Ticket.objects.all()
@@ -102,4 +104,103 @@ class TicketListView(generics.ListAPIView):
                 }
             ).order_by("priority_order")
         return queryset
+
+class TicketDetailView(generics.RetrieveAPIView):
+    queryset=Ticket.objects.all()
+    serializer_class=TicketSerializer
+
+VALID_TRANSITIONS={
+    "OPEN":["IN_PROGRESS"],
+    "IN_PROGRESS":["RESOLVED"],
+    "RESOLVED":["CLOSED"],
+    "CLOSED":[]
+}       
+
+class UpdateTicketStatusView(APIView):
+    def post(self,request,pk):
+        try:
+            ticket=Ticket.objects.get(pk=pk)
+        except Ticket.DoesNotExist:
+            return Response({"error":"Ticket not found"},status=404)
+        new_status=request.data.get("status")
+
+        if new_status not in VALID_TRANSITIONS.get(ticket.status,[]):
+            return Response(
+                {"error":"Invalid status transition"},
+                status=400
+            )
+        old_status=ticket.status
+        ticket.status=new_status
+        ticket.save()
+
+        #event log
+        TicketEvent.objects.create(
+            ticket=ticket,
+            event_type="STATUS_CHANGED",
+            metadata={"from":old_status, "to":new_status}
+        )
+
+        return Response({"message":"Status updated successfully"})
+
+class ReopenTicketView(APIView):
+    def post(self,request,pk):
+        try:
+            ticket=Ticket.objects.get(pk=pk)
+        except Ticket.DoesNotExist:
+            return Response({"error":"Ticket not found"},status=404)
+        if ticket.status!="CLOSED":
+            return Response({"error":"only closed tickets can be reopened"}),
+        reason=request.data.get("reason")
+
+        ticket.status="OPEN"
+        ticket.reopen_count+=1
+
+        #recompute priority
+        from .services.priority_engine import compute_priority
+        from .services.sla_engine import compute_sla_deadline
+        ticket.priority=compute_priority(
+            ticket.impact,
+            ticket.urgency,
+            ticket.category,
+            ticket.description,
+            ticket.reopen_count
+        )
+        ticket.sla_deadline=compute_sla_deadline(ticket.priority)
+
+        ticket.save()
+
+        TicketEvent.objects.create(
+            ticket=ticket,
+            event_type="TICKET_REOPENED",
+            metadata={"reason":reason}
+        )
+        return Response({"message":"Ticket reopened"})
+
+class AddCommentView(APIView):
+    def post(self,request,pk):
+        try:
+            ticket=Ticket.objects.get(pk=pk)
+        except Ticket.DoesNotExist:
+            return Response({"error":"Ticket not found"},status=404)
         
+        user=request.user
+        if user.is_anonymous:
+            from django.contrib.auth.models import User
+            user=User.objects.first()
+        content=request.data.get("content")
+        comment_type=request.data.get("type","PUBLIC")
+
+        comment=Comment.objects.create(
+            ticket=ticket,
+            user=user,
+            content=content,
+            type=comment_type
+        )
+
+        TicketEvent.objects.create(
+            ticket=ticket,
+            event_type="COMMENT_ADDED",
+            metadata={"type":comment_type}
+        )
+
+        return Response({"message":"comment added"})
