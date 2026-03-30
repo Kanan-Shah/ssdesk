@@ -1,0 +1,243 @@
+{% extends "base.html" %}
+{% block title %}Tickets — SSDesk{% endblock %}
+{% block content %}
+<style>
+  .filter-bar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  .filter-bar select, .filter-bar input[type="checkbox"] { cursor: pointer; }
+  .filter-bar select {
+    background: var(--card);
+    border: 1px solid var(--border-light);
+    color: var(--text-dim);
+    padding: 7px 12px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    font-family: var(--sans);
+    outline: none;
+    cursor: pointer;
+  }
+  .overdue-filter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-dim);
+    padding: 7px 12px;
+    background: var(--card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    cursor: pointer;
+  }
+  .filter-bar select:focus { border-color: var(--accent); }
+
+  .ticket-table { width: 100%; border-collapse: collapse; }
+  .ticket-table th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  .ticket-table td {
+    padding: 13px 14px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+    font-size: 13px;
+  }
+  .ticket-table tr:last-child td { border-bottom: none; }
+  .ticket-table tbody tr:hover { background: rgba(255,255,255,0.02); }
+  .ticket-table tbody tr { transition: background 0.1s; }
+
+  .ticket-title {
+    font-weight: 500;
+    color: var(--text);
+  }
+  .ticket-title:hover { color: var(--accent); }
+  .ticket-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+  .sla-remaining { font-family: var(--mono); font-size: 12px; color: var(--green); }
+  .sla-overdue { font-family: var(--mono); font-size: 12px; color: var(--red); }
+  .sla-due-soon { font-family: var(--mono); font-size: 12px; color: var(--yellow); }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+  }
+  .empty-state .icon { font-size: 36px; margin-bottom: 12px; }
+  .empty-state h3 { font-size: 15px; color: var(--text-dim); margin-bottom: 6px; }
+
+  #loading { text-align:center; padding: 40px; color: var(--text-muted); font-family: var(--mono); font-size: 13px; }
+</style>
+
+<div class="page-header">
+  <div class="page-title">Tickets<small id="ticket-count"></small></div>
+  <a href="/create/" class="btn btn-primary">+ New Ticket</a>
+</div>
+
+<div class="filter-bar">
+  <select id="filter-status" onchange="loadTickets()">
+    <option value="">All Statuses</option>
+    <option value="OPEN">Open</option>
+    <option value="IN_PROGRESS">In Progress</option>
+    <option value="RESOLVED">Resolved</option>
+    <option value="CLOSED">Closed</option>
+  </select>
+
+  <select id="filter-category" onchange="loadTickets()">
+    <option value="">All Categories</option>
+    <option value="BUG">Bug</option>
+    <option value="FEATURE">Feature</option>
+    <option value="BILLING">Billing</option>
+    <option value="OTHER">Other</option>
+  </select>
+
+  <select id="filter-priority" onchange="loadTickets()">
+    <option value="">All Priorities</option>
+    <option value="P0">P0 — Critical</option>
+    <option value="P1">P1 — High</option>
+    <option value="P2">P2 — Medium</option>
+    <option value="P3">P3 — Low</option>
+  </select>
+
+  <select id="filter-sort" onchange="loadTickets()">
+    <option value="latest">Latest First</option>
+    <option value="oldest">Oldest First</option>
+    <option value="priority">Highest Priority</option>
+  </select>
+
+  <label class="overdue-filter">
+    <input type="checkbox" id="filter-overdue" onchange="loadTickets()" />
+    Overdue Only
+  </label>
+</div>
+
+<div class="card" style="padding:0; overflow:hidden;">
+  <div id="loading">Loading tickets...</div>
+  <div id="ticket-container" style="display:none;">
+    <table class="ticket-table">
+      <thead>
+        <tr>
+          <th>Ticket</th>
+          <th>Category</th>
+          <th>Priority</th>
+          <th>Status</th>
+          <th>SLA</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody id="ticket-tbody"></tbody>
+    </table>
+    <div id="empty-state" class="empty-state" style="display:none;">
+      <div class="icon">📭</div>
+      <h3>No tickets found</h3>
+      <p style="font-size:13px;">Try adjusting your filters or create a new ticket.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+function formatSLA(sla_deadline) {
+  if (!sla_deadline) return '<span class="text-muted">—</span>';
+  const now = new Date();
+  const deadline = new Date(sla_deadline);
+  const diffMs = deadline - now;
+  const diffH = Math.floor(Math.abs(diffMs) / 3600000);
+  const diffM = Math.floor((Math.abs(diffMs) % 3600000) / 60000);
+
+  if (diffMs < 0) {
+    return `<span class="sla-overdue">▲ ${diffH}h ${diffM}m overdue</span>`;
+  }
+  if (diffMs < 3 * 3600000) {
+    return `<span class="sla-due-soon">⚡ ${diffH}h ${diffM}m left</span>`;
+  }
+  return `<span class="sla-remaining">${diffH}h ${diffM}m left</span>`;
+}
+
+function priorityBadge(p) {
+  return `<span class="badge badge-${p.toLowerCase()}">${p}</span>`;
+}
+
+function statusBadge(s) {
+  const cls = s.toLowerCase().replace('_','-');
+  const labels = {OPEN:'Open', IN_PROGRESS:'In Progress', RESOLVED:'Resolved', CLOSED:'Closed'};
+  return `<span class="badge badge-${cls}">${labels[s] || s}</span>`;
+}
+
+function formatDate(d) {
+  return new Date(d).toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'});
+}
+
+async function loadTickets() {
+  document.getElementById('loading').style.display = 'block';
+  document.getElementById('ticket-container').style.display = 'none';
+
+  const status   = document.getElementById('filter-status').value;
+  const category = document.getElementById('filter-category').value;
+  const priority = document.getElementById('filter-priority').value;
+  const sort     = document.getElementById('filter-sort').value;
+  const overdue  = document.getElementById('filter-overdue').checked;
+
+  let url = '/api/tickets/?';
+  if (status)   url += `status=${status}&`;
+  if (category) url += `category=${category}&`;
+  if (priority) url += `priority=${priority}&`;
+  if (sort)     url += `sort=${sort}&`;
+  if (overdue)  url += `overdue=true&`;
+
+  try {
+    const res = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    const data = await res.json();
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('ticket-container').style.display = 'block';
+
+    const tbody = document.getElementById('ticket-tbody');
+    const emptyState = document.getElementById('empty-state');
+
+    if (!data.length) {
+      tbody.innerHTML = '';
+      emptyState.style.display = 'block';
+      document.getElementById('ticket-count').textContent = '';
+      return;
+    }
+
+    emptyState.style.display = 'none';
+    document.getElementById('ticket-count').textContent = ` · ${data.length} ticket${data.length !== 1 ? 's' : ''}`;
+
+    tbody.innerHTML = data.map(t => `
+      <tr>
+        <td>
+          <a href="/${t.id}/" class="ticket-title">#${t.id} — ${escHtml(t.title)}</a>
+          <div class="ticket-meta">${escHtml(t.description.substring(0, 60))}${t.description.length > 60 ? '…' : ''}</div>
+        </td>
+        <td><span style="font-size:12px;color:var(--text-dim);">${t.category}</span></td>
+        <td>${priorityBadge(t.priority)}</td>
+        <td>${statusBadge(t.status)}</td>
+        <td>${formatSLA(t.sla_deadline)}</td>
+        <td style="color:var(--text-muted);font-size:12px;white-space:nowrap;">${formatDate(t.created_at)}</td>
+      </tr>
+    `).join('');
+  } catch(e) {
+    document.getElementById('loading').innerHTML = '<span style="color:var(--red)">Failed to load tickets.</span>';
+  }
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+loadTickets();
+</script>
+{% endblock %}

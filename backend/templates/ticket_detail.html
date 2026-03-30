@@ -1,0 +1,474 @@
+{% extends "base.html" %}
+{% block title %}Ticket #{{ ticket_id }} — SSDesk{% endblock %}
+{% block content %}
+<style>
+  .detail-layout {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 20px;
+    align-items: start;
+  }
+  .section-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* STATUS FLOW */
+  .status-flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 20px;
+  }
+  .status-step {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-family: var(--mono);
+    padding: 7px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+  .status-step:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+  .status-step:last-child { border-radius: 0 var(--radius) var(--radius) 0; border-left: none; }
+  .status-step:not(:first-child):not(:last-child) { border-left: none; }
+  .status-step.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  .status-step.done { color: var(--green); border-color: var(--border); }
+
+  /* COMMENTS */
+  .comment-item {
+    padding: 14px;
+    border-radius: var(--radius);
+    margin-bottom: 10px;
+  }
+  .comment-public { background: var(--surface); border: 1px solid var(--border); }
+  .comment-internal {
+    background: rgba(234,179,8,0.05);
+    border: 1px solid rgba(234,179,8,0.2);
+  }
+  .comment-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .comment-author {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .comment-time { font-size: 11px; color: var(--text-muted); }
+  .comment-body { font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+  .internal-tag {
+    font-size: 10px;
+    font-family: var(--mono);
+    background: rgba(234,179,8,0.15);
+    color: var(--yellow);
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-left: auto;
+  }
+
+  /* EVENTS */
+  .event-item {
+    display: flex;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    align-items: flex-start;
+  }
+  .event-item:last-child { border-bottom: none; }
+  .event-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    margin-top: 4px;
+    flex-shrink: 0;
+  }
+  .event-type { font-family: var(--mono); font-size: 11px; color: var(--text-dim); }
+  .event-time { font-size: 11px; color: var(--text-muted); margin-left: auto; white-space: nowrap; }
+
+  /* META PANEL */
+  .meta-item { padding: 10px 0; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; }
+  .meta-item:last-child { border-bottom: none; }
+  .meta-key { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-muted); }
+  .meta-val { font-size: 13px; color: var(--text); }
+
+  @media (max-width: 768px) { .detail-layout { grid-template-columns: 1fr; } }
+
+  .tab-bar { display: flex; gap: 2px; margin-bottom: 16px; }
+  .tab-btn {
+    padding: 7px 14px; font-size: 13px; border-radius: var(--radius);
+    background: none; border: 1px solid transparent; color: var(--text-muted);
+    cursor: pointer; font-family: var(--sans);
+    transition: all 0.15s;
+  }
+  .tab-btn.active { background: var(--card); border-color: var(--border); color: var(--text); }
+</style>
+
+<div id="page-loading" style="text-align:center;padding:60px;color:var(--text-muted);font-family:var(--mono);">Loading ticket...</div>
+<div id="page-content" style="display:none;">
+
+<div class="page-header">
+  <div class="page-title" id="ticket-title-header"></div>
+  <a href="/" class="btn btn-outline btn-sm">← All Tickets</a>
+</div>
+
+<div id="ticket-status-flow" class="status-flow"></div>
+
+<div class="detail-layout">
+  <!-- LEFT: main content -->
+  <div>
+    <!-- Description -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="section-title">Description</div>
+      <p id="ticket-description" style="font-size:14px;color:var(--text-dim);line-height:1.7;"></p>
+      <div id="attachment-section" style="margin-top:14px;display:none;">
+        <div class="section-title">Attachment</div>
+        <div id="attachments-list"></div>
+      </div>
+    </div>
+
+    <!-- Status Actions -->
+    <div class="card" style="margin-bottom:16px;" id="actions-card">
+      <div class="section-title">Actions</div>
+      <div id="action-buttons" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+
+      <!-- Reopen form -->
+      <div id="reopen-form" style="display:none;margin-top:14px;">
+        <label class="form-label">Reason for reopening *</label>
+        <textarea class="form-control" id="reopen-reason" placeholder="Describe why this ticket needs to be reopened..." rows="3"></textarea>
+        <div style="display:flex;gap:8px;margin-top:10px;">
+          <button class="btn btn-danger btn-sm" onclick="submitReopen()">Reopen Ticket</button>
+          <button class="btn btn-outline btn-sm" onclick="document.getElementById('reopen-form').style.display='none'">Cancel</button>
+        </div>
+      </div>
+
+      {% if user.is_staff %}
+      <!-- Admin: Override priority -->
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+        <div class="section-title">Admin: Override Priority</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select class="form-control" id="override-priority-val" style="width:auto;">
+            <option value="P0">P0 — Critical</option>
+            <option value="P1">P1 — High</option>
+            <option value="P2">P2 — Medium</option>
+            <option value="P3">P3 — Low</option>
+          </select>
+          <button class="btn btn-outline btn-sm" onclick="overridePriority()">Override</button>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Upload attachment -->
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+        <div class="section-title">Add Attachment</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="file" id="upload-file" class="form-control" style="width:auto;padding:5px 10px;"/>
+          <button class="btn btn-outline btn-sm" onclick="uploadFile()">Upload</button>
+        </div>
+        <div id="upload-msg" style="font-size:12px;margin-top:6px;"></div>
+      </div>
+    </div>
+
+    <!-- Comments -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="section-title">Comments</div>
+
+      <div id="comments-list"></div>
+
+      <div style="margin-top:16px;">
+        <div class="tab-bar">
+          <button class="tab-btn active" onclick="setCommentType('PUBLIC', this)">Public</button>
+          {% if user.is_staff %}<button class="tab-btn" onclick="setCommentType('INTERNAL', this)">Internal (Admin)</button>{% endif %}
+        </div>
+        <textarea class="form-control" id="comment-content" placeholder="Write a comment..." rows="3"></textarea>
+        <input type="hidden" id="comment-type" value="PUBLIC"/>
+        <button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="postComment()">Post Comment</button>
+        <div id="comment-msg" style="font-size:12px;margin-top:6px;"></div>
+      </div>
+    </div>
+
+    <!-- Event History -->
+    <div class="card">
+      <div class="section-title">Event History</div>
+      <div id="event-list"></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: meta -->
+  <div>
+    <div class="card">
+      <div class="section-title">Ticket Details</div>
+      <div id="meta-panel"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+const TICKET_ID = {{ ticket_id }};
+const IS_ADMIN  = {{ user.is_staff|yesno:"true,false" }};
+let currentStatus = '';
+
+const STATUS_ORDER = ['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
+const NEXT_STATUS  = { OPEN: 'IN_PROGRESS', IN_PROGRESS: 'RESOLVED', RESOLVED: 'CLOSED' };
+const STATUS_LABEL = { OPEN: 'Open', IN_PROGRESS: 'In Progress', RESOLVED: 'Resolved', CLOSED: 'Closed' };
+const ACTION_LABEL = { IN_PROGRESS: 'Mark In Progress', RESOLVED: 'Mark Resolved', CLOSED: 'Close Ticket' };
+
+function badge(p, type) {
+  if (type === 'priority') return `<span class="badge badge-${p.toLowerCase()}">${p}</span>`;
+  const cls = p.toLowerCase().replace('_','-');
+  return `<span class="badge badge-${cls}">${STATUS_LABEL[p] || p}</span>`;
+}
+
+function timeAgo(dateStr) {
+  const d = new Date(dateStr);
+  const diff = (Date.now() - d) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+  return d.toLocaleDateString('en-IN', {day:'2-digit', month:'short'});
+}
+
+function formatSLA(sla) {
+  const now = new Date();
+  const dl  = new Date(sla);
+  const ms  = dl - now;
+  const h   = Math.floor(Math.abs(ms)/3600000);
+  const m   = Math.floor((Math.abs(ms)%3600000)/60000);
+  if (ms < 0) return `<span style="color:var(--red);font-family:var(--mono);font-size:12px;">▲ ${h}h ${m}m overdue</span>`;
+  if (ms < 3*3600000) return `<span style="color:var(--yellow);font-family:var(--mono);font-size:12px;">⚡ ${h}h ${m}m left</span>`;
+  return `<span style="color:var(--green);font-family:var(--mono);font-size:12px;">${h}h ${m}m remaining</span>`;
+}
+
+function getCookie(name) {
+  const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+  return v ? v[2] : null;
+}
+
+async function loadTicket() {
+  const res  = await fetch(`/api/tickets/${TICKET_ID}/`);
+  const data = await res.json();
+  currentStatus = data.status;
+
+  // Header
+  document.getElementById('ticket-title-header').textContent = `#${data.id} — ${data.title}`;
+  document.getElementById('ticket-description').textContent  = data.description;
+  document.title = `#${data.id} — SSDesk`;
+
+  // Status flow
+  const curIdx = STATUS_ORDER.indexOf(data.status);
+  document.getElementById('ticket-status-flow').innerHTML = STATUS_ORDER.map((s, i) => `
+    <div class="status-step ${i === curIdx ? 'active' : i < curIdx ? 'done' : ''}">
+      ${i < curIdx ? '✓ ' : ''}${STATUS_LABEL[s]}
+    </div>
+  `).join('');
+
+  // Meta panel
+  document.getElementById('meta-panel').innerHTML = `
+    <div class="meta-item"><div class="meta-key">Status</div><div class="meta-val">${badge(data.status, 'status')}</div></div>
+    <div class="meta-item"><div class="meta-key">Priority</div><div class="meta-val">${badge(data.priority, 'priority')}</div></div>
+    <div class="meta-item"><div class="meta-key">Category</div><div class="meta-val">${data.category}</div></div>
+    <div class="meta-item"><div class="meta-key">Impact</div><div class="meta-val">${data.impact}</div></div>
+    <div class="meta-item"><div class="meta-key">Urgency</div><div class="meta-val">${data.urgency}</div></div>
+    <div class="meta-item"><div class="meta-key">SLA</div><div class="meta-val">${formatSLA(data.sla_deadline)}</div></div>
+    <div class="meta-item"><div class="meta-key">Deadline</div><div class="meta-val" style="font-size:12px;font-family:var(--mono);">${new Date(data.sla_deadline).toLocaleString('en-IN')}</div></div>
+    <div class="meta-item"><div class="meta-key">Reopened</div><div class="meta-val">${data.reopen_count || 0}×</div></div>
+    <div class="meta-item"><div class="meta-key">Created</div><div class="meta-val" style="font-size:12px;">${new Date(data.created_at).toLocaleString('en-IN')}</div></div>
+  `;
+
+  // Action buttons
+  renderActions(data.status);
+
+  // Set priority override default
+  if (IS_ADMIN) {
+    const sel = document.getElementById('override-priority-val');
+    if (sel) sel.value = data.priority;
+  }
+
+  document.getElementById('page-loading').style.display = 'none';
+  document.getElementById('page-content').style.display = 'block';
+}
+
+function renderActions(status) {
+  const btns = document.getElementById('action-buttons');
+  let html = '';
+
+  const next = NEXT_STATUS[status];
+  if (next) {
+    html += `<button class="btn btn-primary btn-sm" onclick="updateStatus('${next}')">${ACTION_LABEL[next]}</button>`;
+  }
+  if (status === 'CLOSED') {
+    html += `<button class="btn btn-outline btn-sm" onclick="document.getElementById('reopen-form').style.display='block'">Reopen Ticket</button>`;
+  }
+  if (!html) html = `<span style="font-size:13px;color:var(--text-muted);">No further transitions available.</span>`;
+  btns.innerHTML = html;
+}
+
+async function updateStatus(newStatus) {
+  const res = await fetch(`/api/tickets/${TICKET_ID}/status/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+    body: JSON.stringify({ status: newStatus })
+  });
+  if (res.ok) { loadTicket(); loadEvents(); }
+  else {
+    const d = await res.json();
+    alert(d.error || 'Failed to update status.');
+  }
+}
+
+async function submitReopen() {
+  const reason = document.getElementById('reopen-reason').value.trim();
+  if (!reason) { alert('Please provide a reason.'); return; }
+  const res = await fetch(`/api/tickets/${TICKET_ID}/reopen/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+    body: JSON.stringify({ reason })
+  });
+  if (res.ok) {
+    document.getElementById('reopen-form').style.display = 'none';
+    document.getElementById('reopen-reason').value = '';
+    loadTicket(); loadEvents();
+  } else {
+    const d = await res.json();
+    alert(d.error || 'Failed to reopen.');
+  }
+}
+
+async function overridePriority() {
+  const p = document.getElementById('override-priority-val').value;
+  const res = await fetch(`/api/tickets/${TICKET_ID}/override-priority/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+    body: JSON.stringify({ priority: p })
+  });
+  if (res.ok) { loadTicket(); loadEvents(); }
+  else alert('Failed to override priority.');
+}
+
+async function loadComments() {
+  const res  = await fetch(`/api/tickets/${TICKET_ID}/comments/`);
+  if (!res.ok) return;
+  const data = await res.json();
+  const el   = document.getElementById('comments-list');
+
+  if (!data.length) {
+    el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:8px 0;">No comments yet. Be the first to comment.</div>';
+    return;
+  }
+
+  el.innerHTML = data.map(c => `
+    <div class="comment-item comment-${c.type.toLowerCase()}">
+      <div class="comment-header">
+        <span class="comment-author">${c.user_username || 'User'}</span>
+        <span class="comment-time">${timeAgo(c.created_at)}</span>
+        ${c.type === 'INTERNAL' ? '<span class="internal-tag">Internal</span>' : ''}
+      </div>
+      <div class="comment-body">${escHtml(c.content)}</div>
+    </div>
+  `).join('');
+}
+
+async function postComment() {
+  const content = document.getElementById('comment-content').value.trim();
+  const type    = document.getElementById('comment-type').value;
+  const msgEl   = document.getElementById('comment-msg');
+
+  if (!content) { msgEl.textContent = 'Comment cannot be empty.'; msgEl.style.color='var(--red)'; return; }
+
+  const res = await fetch(`/api/tickets/${TICKET_ID}/comment/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+    body: JSON.stringify({ content, type })
+  });
+
+  if (res.ok) {
+    document.getElementById('comment-content').value = '';
+    msgEl.textContent = 'Comment posted.';
+    msgEl.style.color = 'var(--green)';
+    setTimeout(() => msgEl.textContent = '', 2000);
+    loadComments();
+  } else {
+    const d = await res.json();
+    msgEl.textContent = d.error || 'Failed to post comment.';
+    msgEl.style.color = 'var(--red)';
+  }
+}
+
+function setCommentType(type, btn) {
+  document.getElementById('comment-type').value = type;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+async function uploadFile() {
+  const file  = document.getElementById('upload-file').files[0];
+  const msgEl = document.getElementById('upload-msg');
+
+  if (!file) { msgEl.textContent = 'Please select a file.'; msgEl.style.color='var(--red)'; return; }
+  if (file.size > 5*1024*1024) { msgEl.textContent = 'Max file size is 5MB.'; msgEl.style.color='var(--red)'; return; }
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  const res = await fetch(`/api/tickets/${TICKET_ID}/upload/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': getCookie('csrftoken') },
+    body: fd
+  });
+
+  if (res.ok) {
+    msgEl.textContent = 'File uploaded successfully.';
+    msgEl.style.color = 'var(--green)';
+    document.getElementById('upload-file').value = '';
+  } else {
+    msgEl.textContent = 'Upload failed.';
+    msgEl.style.color = 'var(--red)';
+  }
+}
+
+async function loadEvents() {
+  const res  = await fetch(`/api/tickets/${TICKET_ID}/events/`);
+  if (!res.ok) return;
+  const data = await res.json();
+  const el   = document.getElementById('event-list');
+
+  if (!data.length) { el.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">No events yet.</div>'; return; }
+
+  el.innerHTML = data.map(ev => `
+    <div class="event-item">
+      <div class="event-dot"></div>
+      <div>
+        <div class="event-type">${ev.event_type.replace(/_/g,' ')}</div>
+        ${ev.metadata ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${JSON.stringify(ev.metadata)}</div>` : ''}
+      </div>
+      <div class="event-time">${timeAgo(ev.created_at)}</div>
+    </div>
+  `).join('');
+}
+
+function escHtml(s) {
+  const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+}
+
+loadTicket();
+loadComments();
+loadEvents();
+</script>
+{% endblock %}

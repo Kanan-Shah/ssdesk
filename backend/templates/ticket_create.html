@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block title %}New Ticket — SSDesk{% endblock %}
+{% block content %}
+<style>
+  .create-layout {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 20px;
+    align-items: start;
+  }
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .help-text {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  .priority-preview {
+    font-family: var(--mono);
+    font-size: 13px;
+    text-align: center;
+    padding: 16px;
+    border-radius: var(--radius);
+    border: 1px dashed var(--border-light);
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+  .info-block {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.8;
+  }
+  .info-block h4 {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-row span:last-child { font-weight: 600; }
+  @media (max-width: 768px) {
+    .create-layout { grid-template-columns: 1fr; }
+    .field-row { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="page-header">
+  <div class="page-title">New Ticket</div>
+  <a href="/" class="btn btn-outline btn-sm">← Back</a>
+</div>
+
+<div class="create-layout">
+  <div class="card">
+    <form id="ticket-form" enctype="multipart/form-data">
+      {% csrf_token %}
+
+      <div class="form-group">
+        <label class="form-label">Title *</label>
+        <input class="form-control" type="text" id="title" name="title" required
+               placeholder="Brief summary of the issue" minlength="5" />
+        <div class="help-text">Minimum 5 characters</div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Description *</label>
+        <textarea class="form-control" id="description" name="description" required
+                  placeholder="Describe the issue in detail — steps to reproduce, expected vs actual behavior..." 
+                  rows="5" minlength="20" style="min-height:120px;"></textarea>
+        <div class="help-text">Minimum 20 characters. Be specific — it helps us resolve faster.</div>
+      </div>
+
+      <div class="field-row">
+        <div class="form-group">
+          <label class="form-label">Category *</label>
+          <select class="form-control" id="category" name="category" required onchange="updatePreview()">
+            <option value="">Select category</option>
+            <option value="BUG">Bug</option>
+            <option value="FEATURE">Feature Request</option>
+            <option value="BILLING">Billing</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Impact *</label>
+          <select class="form-control" id="impact" name="impact" required onchange="updatePreview()">
+            <option value="">Select impact</option>
+            <option value="LOW">Low</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="HIGH">High</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="form-group">
+          <label class="form-label">Urgency *</label>
+          <select class="form-control" id="urgency" name="urgency" required onchange="updatePreview()">
+            <option value="">Select urgency</option>
+            <option value="LOW">Low</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="HIGH">High</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Attachment (optional)</label>
+          <input class="form-control" type="file" id="attachment" name="file"
+                 style="padding:6px 12px;cursor:pointer;" />
+          <div class="help-text">Max 25MB</div>
+        </div>
+      </div>
+
+      <div id="form-error" class="alert alert-error" style="display:none;"></div>
+
+      <div style="display:flex; gap:10px; margin-top:8px;">
+        <button type="submit" class="btn btn-primary" id="submit-btn">Submit Ticket</button>
+        <a href="/" class="btn btn-outline">Cancel</a>
+      </div>
+    </form>
+  </div>
+
+  <div>
+    <div class="priority-preview" id="priority-preview">
+      Priority will be auto-computed based on your inputs
+    </div>
+
+    <div class="info-block">
+      <h4>SLA Timelines</h4>
+      <div class="info-row"><span>P0 Critical</span><span style="color:var(--p0)">4 hrs</span></div>
+      <div class="info-row"><span>P1 High</span><span style="color:var(--p1)">12 hrs</span></div>
+      <div class="info-row"><span>P2 Medium</span><span style="color:var(--p2)">24 hrs</span></div>
+      <div class="info-row"><span>P3 Low</span><span style="color:var(--p3)">72 hrs</span></div>
+    </div>
+
+    <div class="info-block" style="margin-top:12px;">
+      <h4>Priority Rules</h4>
+      <div class="info-row"><span>High impact + High urgency</span><span style="color:var(--p0)">→ P0</span></div>
+      <div class="info-row"><span>Billing category</span><span style="color:var(--p1)">↑ bump</span></div>
+      <div class="info-row"><span>Reopened 2+ times</span><span style="color:var(--p1)">↑ bump</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+function updatePreview() {
+  const impact   = document.getElementById('impact').value;
+  const urgency  = document.getElementById('urgency').value;
+  const category = document.getElementById('category').value;
+  const preview  = document.getElementById('priority-preview');
+
+  if (!impact || !urgency || !category) {
+    preview.innerHTML = 'Priority will be auto-computed based on your inputs';
+    preview.style.borderStyle = 'dashed';
+    preview.style.color = 'var(--text-muted)';
+    return;
+  }
+
+  // Simulate priority logic (mirrors backend)
+  let idx = 3;
+  if (impact === 'HIGH' && urgency === 'HIGH') idx = 0;
+  else if (impact === 'HIGH' || urgency === 'HIGH') idx = 1;
+  else if (impact === 'MEDIUM' || urgency === 'MEDIUM') idx = 2;
+
+  if (category === 'BILLING' && idx > 0) idx--;
+
+  const labels = ['P0 — Critical', 'P1 — High', 'P2 — Medium', 'P3 — Low'];
+  const colors = ['var(--p0)', 'var(--p1)', 'var(--p2)', 'var(--p3)'];
+  const sla    = ['4 hours', '12 hours', '24 hours', '72 hours'];
+
+  preview.innerHTML = `<div style="font-size:20px;font-weight:700;color:${colors[idx]};margin-bottom:4px;">${labels[idx]}</div><div style="font-size:11px;color:var(--text-muted);">SLA: ${sla[idx]}</div>`;
+  preview.style.borderColor = colors[idx];
+  preview.style.borderStyle = 'solid';
+}
+
+document.getElementById('ticket-form').addEventListener('submit', async function(e) {
+  e.preventDefault();
+
+  const btn = document.getElementById('submit-btn');
+  const errEl = document.getElementById('form-error');
+  errEl.style.display = 'none';
+
+  const title = document.getElementById('title').value.trim();
+  const desc  = document.getElementById('description').value.trim();
+
+  if (title.length < 5)  { errEl.textContent = 'Title must be at least 5 characters.';       errEl.style.display = 'block'; return; }
+  if (desc.length  < 20) { errEl.textContent = 'Description must be at least 20 characters.'; errEl.style.display = 'block'; return; }
+
+  const file = document.getElementById('attachment').files[0];
+  if (file && file.size > 25 * 1024 * 1024) {
+    errEl.textContent = 'Attachment must be under 5MB.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+
+  try {
+    const formData = new FormData();
+    formData.append('title',       title);
+    formData.append('description', desc);
+    formData.append('category',    document.getElementById('category').value);
+    formData.append('impact',      document.getElementById('impact').value);
+    formData.append('urgency',     document.getElementById('urgency').value);
+
+    const res = await fetch('/api/tickets/create/', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCookie('csrftoken') },
+      body: formData
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      errEl.textContent = JSON.stringify(data);
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Submit Ticket';
+      return;
+    }
+
+    const ticketId = data.id;
+
+    // Upload attachment if any
+    if (file) {
+      const fd = new FormData();
+      fd.append('file', file);
+      await fetch(`/api/tickets/${ticketId}/upload/`, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+        body: fd
+      });
+    }
+
+    window.location.href = `/${ticketId}/`;
+  } catch(err) {
+    errEl.textContent = 'Something went wrong. Please try again.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Submit Ticket';
+  }
+});
+
+function getCookie(name) {
+  const v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+  return v ? v[2] : null;
+}
+</script>
+{% endblock %}

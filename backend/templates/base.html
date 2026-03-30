@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}SSDesk{% endblock %}</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0f12;
+      --surface: #14171c;
+      --card: #1a1e25;
+      --border: #252a33;
+      --border-light: #2e3440;
+      --text: #e8eaf0;
+      --text-muted: #6b7280;
+      --text-dim: #9ca3af;
+      --accent: #3b82f6;
+      --accent-dim: #1d4ed8;
+      --green: #22c55e;
+      --yellow: #eab308;
+      --red: #ef4444;
+      --orange: #f97316;
+      --p0: #ef4444;
+      --p1: #f97316;
+      --p2: #eab308;
+      --p3: #22c55e;
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'DM Sans', sans-serif;
+      --radius: 6px;
+      --shadow: 0 2px 12px rgba(0,0,0,0.4);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 14px;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { color: #60a5fa; }
+
+    /* NAV */
+    nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 56px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .nav-logo {
+      font-family: var(--mono);
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.5px;
+    }
+    .nav-logo span { color: var(--accent); }
+
+    .nav-links { display: flex; align-items: center; gap: 4px; }
+    .nav-links a {
+      color: var(--text-muted);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: var(--radius);
+      transition: all 0.15s;
+    }
+    .nav-links a:hover, .nav-links a.active {
+      color: var(--text);
+      background: var(--card);
+    }
+
+    .nav-right { display: flex; align-items: center; gap: 12px; }
+    .nav-user {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .btn-logout {
+      font-size: 12px;
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+      background: none;
+      padding: 5px 12px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-family: var(--sans);
+      transition: all 0.15s;
+    }
+    .btn-logout:hover { border-color: var(--red); color: var(--red); }
+
+    /* LAYOUT */
+    .page-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+    }
+
+    .page-title {
+      font-family: var(--mono);
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .page-title small {
+      font-family: var(--sans);
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 400;
+      margin-left: 10px;
+    }
+
+    /* BUTTONS */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+      font-family: var(--sans);
+      text-decoration: none;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-dim); color: #fff; }
+    .btn-outline { background: none; border: 1px solid var(--border-light); color: var(--text-dim); }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-danger { background: rgba(239,68,68,0.1); border: 1px solid var(--red); color: var(--red); }
+    .btn-danger:hover { background: rgba(239,68,68,0.2); }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+
+    /* CARDS */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+
+    /* BADGES */
+    .badge {
+      display: inline-block;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 3px;
+      letter-spacing: 0.5px;
+    }
+    .badge-p0 { background: rgba(239,68,68,0.15); color: var(--p0); border: 1px solid rgba(239,68,68,0.3); }
+    .badge-p1 { background: rgba(249,115,22,0.15); color: var(--p1); border: 1px solid rgba(249,115,22,0.3); }
+    .badge-p2 { background: rgba(234,179,8,0.15); color: var(--p2); border: 1px solid rgba(234,179,8,0.3); }
+    .badge-p3 { background: rgba(34,197,94,0.15); color: var(--p3); border: 1px solid rgba(34,197,94,0.3); }
+    .badge-open { background: rgba(59,130,246,0.1); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
+    .badge-in_progress { background: rgba(234,179,8,0.1); color: var(--yellow); border: 1px solid rgba(234,179,8,0.3); }
+    .badge-resolved { background: rgba(34,197,94,0.1); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+    .badge-closed { background: rgba(107,114,128,0.1); color: var(--text-muted); border: 1px solid rgba(107,114,128,0.3); }
+
+    /* FORMS */
+    .form-group { margin-bottom: 18px; }
+    .form-label {
+      display: block;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 6px;
+    }
+    .form-control {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border-light);
+      color: var(--text);
+      padding: 9px 12px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-family: var(--sans);
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-control:focus { border-color: var(--accent); }
+    .form-control::placeholder { color: var(--text-muted); }
+    textarea.form-control { resize: vertical; min-height: 90px; }
+    select.form-control option { background: var(--surface); }
+
+    /* ALERTS */
+    .alert {
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .alert-error { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: #fca5a5; }
+    .alert-success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: #86efac; }
+
+    /* UTILS */
+    .text-muted { color: var(--text-muted); }
+    .text-mono { font-family: var(--mono); }
+    .flex { display: flex; }
+    .items-center { align-items: center; }
+    .gap-2 { gap: 8px; }
+    .gap-3 { gap: 12px; }
+    .mt-2 { margin-top: 8px; }
+    .mt-4 { margin-top: 16px; }
+
+    /* MESSAGES */
+    .django-messages { list-style: none; }
+    .django-messages li { margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+
+{% if user.is_authenticated %}
+<nav>
+  <div class="nav-logo">SS<span>Desk</span></div>
+  <div class="nav-links">
+    <a href="/" {% if request.path == '/tickets/' %}class="active"{% endif %}>Tickets</a>
+    <a href="/dashboard/" {% if 'dashboard' in request.path %}class="active"{% endif %}>Dashboard</a>
+    {% if user.is_authenticated %}
+    <a href="/create/" {% if 'create' in request.path %}class="active"{% endif %}>+ New Ticket</a>
+    {% endif %}
+  </div>
+  <div class="nav-right">
+    <span class="nav-user">{{ user.username }}{% if user.is_staff %} · admin{% endif %}</span>
+    <form method="post" action="/logout/" style="margin:0">
+      {% csrf_token %}
+      <button class="btn-logout" type="submit">Logout</button>
+    </form>
+  </div>
+</nav>
+{% endif %}
+
+<div class="page-container">
+  {% if messages %}
+  <ul class="django-messages">
+    {% for message in messages %}
+    <li class="alert {% if message.tags == 'error' %}alert-error{% else %}alert-success{% endif %}">{{ message }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% block content %}{% endblock %}
+</div>
+
+</body>
+</html>
