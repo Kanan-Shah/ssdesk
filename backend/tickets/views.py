@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import render,redirect
 from rest_framework import generics
 from django.utils import timezone
 from .models import Ticket,TicketEvent,Comment,Attachment
@@ -12,6 +12,8 @@ from rest_framework import status
 from django.db.models import Count,Avg,F,ExpressionWrapper,DurationField
 from datetime import timedelta
 from rest_framework.parsers import MultiPartParser,FormParser
+from django.contrib.auth.decorators import login_required
+from rest_framework import serializers as drf_serializers
 
 class TicketCreateView(generics.CreateAPIView):
     queryset=Ticket.objects.all()
@@ -19,8 +21,7 @@ class TicketCreateView(generics.CreateAPIView):
 
     def perform_create(self, serializer):
         user=self.request.user
-        if user.is_anonymous:
-            user=User.objects.first()
+
         impact=serializer.validated_data.get("impact")
         urgency=serializer.validated_data.get("urgency")
         category=serializer.validated_data.get("category")
@@ -62,8 +63,7 @@ class TicketListView(generics.ListAPIView):
 
     def get_queryset(self):
         user=self.request.user
-        if user.is_anonymous:
-            user=User.objects.first()
+
         queryset=Ticket.objects.all()
 
         #role based filtering
@@ -82,7 +82,7 @@ class TicketListView(generics.ListAPIView):
             queryset=queryset.filter(category=category)
         if priority:
             queryset=queryset.filter(priority=priority)
-        if overdue==True:
+        if overdue=='true':
             queryset=queryset.filter(sla_deadline__lt=timezone.now())
         
         #Sorting
@@ -91,7 +91,7 @@ class TicketListView(generics.ListAPIView):
         if sort_by=="latest":
             queryset=queryset.order_by("-created_at")
         elif sort_by=="oldest":
-            queryset=queryset.order_by("-created_at")
+            queryset=queryset.order_by("created_at")
         elif sort_by=="priority":
             # custom ordering - P0 highest priority
             queryset=queryset.extra(
@@ -159,7 +159,7 @@ class ReopenTicketView(APIView):
         except Ticket.DoesNotExist:
             return Response({"error":"Ticket not found"},status=404)
         if ticket.status!="CLOSED":
-            return Response({"error":"only closed tickets can be reopened"}),
+            return Response({"error":"only closed tickets can be reopened"})
         reason=request.data.get("reason")
 
         ticket.status="OPEN"
@@ -194,11 +194,15 @@ class AddCommentView(APIView):
             return Response({"error":"Ticket not found"},status=404)
         
         user=request.user
-        if user.is_anonymous:
-            from django.contrib.auth.models import User
-            user=User.objects.first()
+
         content=request.data.get("content")
         comment_type=request.data.get("type","PUBLIC")
+
+        if comment_type=="INTERNAL" and not user.is_staff:
+            return Response(
+                {"error":"Only admins can add internal comments"},
+                status=403
+            )
 
         comment=Comment.objects.create(
             ticket=ticket,
@@ -325,3 +329,65 @@ class OverridePriorityView(APIView):
 
         return Response({"message": "Priority updated"})  
 
+class CommentSerializer(drf_serializers.ModelSerializer):
+    user_username = drf_serializers.CharField(source='user.username', read_only=True)
+    class Meta:
+        model = Comment
+        fields = ['id', 'content', 'type', 'user_username', 'created_at']
+
+class ListCommentsView(APIView):
+    def get(self, request, pk):
+        try:
+            ticket = Ticket.objects.get(pk=pk)
+        except Ticket.DoesNotExist:
+            return Response({"error": "Ticket not found"}, status=404)
+ 
+        comments = ticket.comments.all().order_by('created_at')
+ 
+        # Non-admins can't see INTERNAL comments
+        if not request.user.is_staff:
+            comments = comments.filter(type='PUBLIC')
+ 
+        serializer = CommentSerializer(comments, many=True)
+        return Response(serializer.data)
+
+class TicketEventSerializer(drf_serializers.ModelSerializer):
+    class Meta:
+        model = TicketEvent
+        fields = ['id', 'event_type', 'metadata', 'created_at']
+
+class ListEventsView(APIView):
+    def get(self, request, pk):
+        try:
+            ticket = Ticket.objects.get(pk=pk)
+        except Ticket.DoesNotExist:
+            return Response({"error": "Ticket not found"}, status=404)
+ 
+        events = ticket.events.all().order_by('-created_at')
+        serializer = TicketEventSerializer(events, many=True)
+        return Response(serializer.data)
+
+@login_required
+def ticket_list_page(request):
+    return render(request, "ticket_list.html")
+@login_required
+def ticket_create_page(request):
+    return render(request,"ticket_create.html")
+@login_required
+def ticket_detail_page(request,pk):
+    return render(request,"ticket_detail.html",{"ticket_id":pk})
+
+@login_required
+def dashboard_page(request):
+    return render(request,"dashboard.html")
+
+def signup_page(request):
+    if request.method == "POST":
+        username = request.POST.get("username")
+        password = request.POST.get("password")
+
+        User.objects.create_user(username=username, password=password)
+
+        return redirect("/login/")
+
+    return render(request, "signup.html")

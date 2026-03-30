@@ -27,3 +27,12 @@ class TicketSerializer(serializers.ModelSerializer):
             "updated_at",
             "reopen_count"
             ]
+def validate_title(self, value):
+    if len(value.strip()) < 5:
+        raise serializers.ValidationError("Title must be at least 5 characters.")
+    return value
+
+def validate_description(self, value):
+    if len(value.strip()) < 20:
+        raise serializers.ValidationError("Description must be at least 20 characters.")
+    return value

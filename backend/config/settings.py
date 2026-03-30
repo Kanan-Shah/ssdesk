@@ -67,7 +67,7 @@ TEMPLATES = [
         },
     },
 ]
-
+TEMPLATES[0]['DIRS'] = [BASE_DIR / "templates"]
 WSGI_APPLICATION = "config.wsgi.application"
 
 
@@ -117,3 +117,12 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = "static/"
+LOGIN_URL="/login/"
+LOGIN_REDIRECT_URL="/"
+LOGOUT_REDIRECT_URL="/login/"
+MEDIA_URL="/media/"
+MEDIA_ROOT=BASE_DIR / "media"
+REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated'],
+    'DEFAULT_AUTHENTICATION_CLASSES': ['rest_framework.authentication.SessionAuthentication'],
+}
