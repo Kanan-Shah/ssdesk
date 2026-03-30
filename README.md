@@ -8,6 +8,7 @@ The system is designed to simulate a real-world SaaS support desk with structure
 
 ---
 ## Project Structure
+```
 ssdesk/
 ├── ssdesk/              # Django project config
 │   ├── settings.py
@@ -35,6 +36,7 @@ ssdesk/
 ├── ASSUMPTIONS.md
 ├── API.md
 └── DB_SCHEMA.md
+```
 ---
 
 ## Features
