@@ -1,66 +1,82 @@
 # Database Schema
 
-## Users
+The system follows a normalized relational design.
 
-* id
-* email
-* role (USER / ADMIN)
+## Entities
+
+### User
+
+* id (Primary Key)
+* username
+* password
 
 ---
 
-## Tickets
+### Ticket
 
-* id
+* id (Primary Key)
 * title
 * description
-* category
-* impact
-* urgency
-* priority
-* status
-* sla_deadline
-* created_at
-* updated_at
-* reopen_count
-* created_by (FK → Users.id)
+* category (Bug / Feature / Billing / Other)
+* impact (Low / Medium / High)
+* urgency (Low / Medium / High)
+* priority (P0 / P1 / P2 / P3)
+* status (Open / In Progress / Resolved / Closed)
+* created_by (ForeignKey → User)
+* sla_deadline (DateTime)
+* reopen_count (Integer)
+* created_at (DateTime)
+* updated_at (DateTime)
 
 ---
 
-## Comments
+### Comment
 
-* id
-* ticket_id (FK → Tickets.id)
-* user_id (FK → Users.id)
+* id (Primary Key)
+* ticket (ForeignKey → Ticket)
+* user (ForeignKey → User)
 * content
-* type (PUBLIC / INTERNAL)
-* created_at
+* type (Public / Internal)
+* created_at (DateTime)
 
 ---
 
-## Attachments
+### Attachment
 
-* id
-* ticket_id (FK → Tickets.id)
-* file_path
+* id (Primary Key)
+* ticket (ForeignKey → Ticket)
+* file
 * file_size
-* uploaded_at
+* uploaded_at (DateTime)
 
 ---
 
-## TicketEvents
+### TicketEvent
 
-* id
-* ticket_id (FK → Tickets.id)
-* event_type
-* metadata (JSON)
-* created_at
+* id (Primary Key)
+* ticket (ForeignKey → Ticket)
+* event_type (TICKET_CREATED, STATUS_CHANGED, etc.)
+* created_at (DateTime)
 
 ---
 
-# Relationships
+## Relationships
 
 * One User → Many Tickets
 * One Ticket → Many Comments
+* One Ticket → Many Attachments
 * One Ticket → Many Events
-* One Ticket → One or Many Attachments
-* One User → Many Comments
+
+---
+
+## Queryability
+
+Ticket history is fully queryable via:
+
+GET /api/tickets/{id}/events/
+
+This enables:
+
+* Audit tracking
+* Timeline reconstruction
+* Analytics computation
